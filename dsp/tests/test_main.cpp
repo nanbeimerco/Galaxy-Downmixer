@@ -11,6 +11,7 @@
 #include "gdm/Biquad.h"
 #include "gdm/ChannelMap.h"
 #include "gdm/Engine.h"
+#include "gdm/Options.h"
 
 #ifndef GDM_TEST_DATA_DIR
 #define GDM_TEST_DATA_DIR "."
@@ -554,6 +555,33 @@ TEST(apo_utf16_file_text) {
     CHECK_NEAR(p.common.preampDb, -2.0, 1e-12);
     CHECK(p.common.filters.size() == 1);
     CHECK(p.warnings.empty());
+}
+
+// Options file ------------------------------------------------------------------------------
+
+TEST(options_file) {
+    Settings s;
+    const Options o = parseOptions(
+        "# comment\n"
+        "enabled = 0\n"
+        "swap=1\n"
+        "mute=TBL, tbr\n"
+        "master_db=-3.5   # headroom\n"
+        "lfe_lpf=off\n"
+        "eq_file=/vendor/etc/galaxy_downmixer/eq.txt\n"
+        "log_interval_s=10\n"
+        "mute_bad\n"
+        "colour=red\n"
+        "master_db=loud\n",
+        s);
+    CHECK(!o.enabled);
+    CHECK(s.swapLR);
+    CHECK(s.muteMask == (kTBL | kTBR));
+    CHECK_NEAR(s.masterGainDb, -3.5, 1e-12);
+    CHECK(!s.lfeLowPassEnabled);
+    CHECK(o.eqFile == "/vendor/etc/galaxy_downmixer/eq.txt");
+    CHECK(o.logIntervalS == 10);
+    CHECK(o.warnings.size() == 3);
 }
 
 }  // namespace

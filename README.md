@@ -37,6 +37,24 @@ PC で音を確かめる場合：
 build/pc/Release/gdm_cli.exe in_7.1.4.wav out.wav --eq "upper 6kHz no touch ig955 eq.txt" --mute TBL,TBR --swap
 ```
 
+## 段階0：エフェクトライブラリと Magisk モジュール
+
+| 場所 | 内容 |
+|---|---|
+| `effect/src/EffectMain.cpp` | AOSP エフェクトのラッパー（`AELI`）。音楽ストリームのセッションに postprocess として付き、トラックのチャンネル配置（7.1.4）のまま受け取る |
+| `effect/src/Protocol.h` | パラメータの番号（状態・メーター・ミュート・スワップ・マスター・設定ファイル再読込）。今後アプリからも使う |
+| `effect/tools/effect_host_test.cpp` | `/data/local/tmp` で .so を読み込んで動作確認するテスト（システムには触れない） |
+| `module/` | Magisk モジュール。インストール時に端末の `audio_effects_sec.xml` を元にして、上書き用ファイルを作る |
+| `module/system/vendor/etc/galaxy_downmixer/options.conf` | 端末上の設定（有効/無効、スワップ、ミュート、マスター、EQ ファイル、ログの間隔） |
+
+```bash
+bash scripts/package_module.sh   # .so をビルドして build/GalaxyDownmixer-<version>.zip を作る
+bash scripts/install_module.sh   # Magisk でインストール（再起動は手動）
+bash scripts/device_check.sh     # 再起動して Apple Music の Atmos を再生しながら実行（読み取りのみ）
+```
+
+元に戻す方法：Magisk アプリで削除するか、`adb shell "su -c 'touch /data/adb/modules/galaxy_downmixer/remove'"` を実行して再起動する。起動がおかしいときは Magisk のセーフモード（起動中に音量下ボタンを押し続ける）で起動する。
+
 ## 参考資料
 - `Dolby ON James ON.txt` / `Dolby ON James OFF.txt`：`dumpsys media.audio_flinger`（Apple Music のトラックは `0x0002D63F` = 7.1.4）
 - `device_config/`：端末の `/vendor/etc/audio_effects*.xml`（実際に読み込まれているのは `audio_effects_sec.xml`）

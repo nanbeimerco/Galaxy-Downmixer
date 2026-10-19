@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Cross-compiles the DSP core with the Android NDK for both ABIs the audio
+# Builds libgalaxydownmixer.so with the Android NDK for both ABIs the audio
 # HAL may use (the Galaxy S21's android.hardware.audio.service is 32-bit).
+# libc++ is linked statically: vendor processes cannot load libc++_shared.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -11,10 +12,10 @@ API="${ANDROID_API:-30}"
 
 for ABI in armeabi-v7a arm64-v8a; do
     BUILD="$ROOT/build/android-$ABI"
-    "$CMAKE_DIR/cmake.exe" -S "$ROOT/dsp" -B "$BUILD" -G Ninja \
+    "$CMAKE_DIR/cmake.exe" -S "$ROOT/effect" -B "$BUILD" -G Ninja \
         -DCMAKE_MAKE_PROGRAM="$CMAKE_DIR/ninja.exe" \
         -DCMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake" \
-        -DANDROID_ABI="$ABI" -DANDROID_PLATFORM="android-$API" \
+        -DANDROID_ABI="$ABI" -DANDROID_PLATFORM="android-$API" -DANDROID_STL=c++_static \
         -DCMAKE_BUILD_TYPE=Release
     "$CMAKE_DIR/cmake.exe" --build "$BUILD"
 done

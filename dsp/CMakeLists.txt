@@ -11,6 +11,7 @@ add_library(gdm_dsp STATIC
     src/Biquad.cpp
     src/ChannelMap.cpp
     src/Engine.cpp
+    src/Options.cpp
 )
 target_include_directories(gdm_dsp PUBLIC include)
 

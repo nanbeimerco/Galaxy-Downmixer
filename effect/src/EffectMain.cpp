@@ -46,8 +46,12 @@ const effect_descriptor_t kDescriptor = {
     {0xa6e3f002, 0x29bf, 0x40a2, 0xbfcf, {0xdf, 0x47, 0xef, 0xb3, 0xa2, 0x24}},
     EFFECT_CONTROL_API_VERSION,
     EFFECT_FLAG_TYPE_INSERT | EFFECT_FLAG_INSERT_FIRST,
-    50,   // cpuLoad, 0.1 MIPS units
-    128,  // memoryUsage, KB
+    // AudioPolicy sums these over every live effect instance and refuses new
+    // ones past a fixed budget (512 KB / 430 MIPS). We get one instance per
+    // music session plus the app's control handle, so keep them realistic:
+    // the engine needs about 30 KB (mostly the 50 ms delay lines).
+    20,  // cpuLoad, 0.1 MIPS units
+    32,  // memoryUsage, KB
     "Galaxy Downmixer",
     "Galaxy Downmixer project",
 };

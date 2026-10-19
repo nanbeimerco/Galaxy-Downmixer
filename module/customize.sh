@@ -6,7 +6,7 @@
 ORIG=/vendor/etc/audio_effects_sec.xml
 OUT=$MODPATH/system/vendor/etc/audio_effects_sec.xml
 
-ui_print "- Galaxy Downmixer v0.2.0"
+ui_print "- Galaxy Downmixer v0.2.1"
 
 [ "$API" -ge 30 ] || abort "! Android 11 or newer is required"
 case "$ARCH" in

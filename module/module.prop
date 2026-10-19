@@ -1,6 +1,6 @@
 id=galaxy_downmixer
 name=Galaxy Downmixer
-version=v0.2.0
-versionCode=2
+version=v0.2.1
+versionCode=3
 author=masak
 description=Custom 7.1.4 to stereo downmix effect for Apple Music Dolby Atmos (Galaxy S21). Controlled by the Galaxy Downmixer app.

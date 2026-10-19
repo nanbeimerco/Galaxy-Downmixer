@@ -1,0 +1,11 @@
+# Third-party reference source (not part of this project)
+JamesDSPManager-master/
+
+# UTF-16 copy saved by PowerShell redirection; the UTF-8 originals live in device_config/
+/audio_effects.xml
+
+# Build outputs
+build/
+out/
+*.wav
+__pycache__/

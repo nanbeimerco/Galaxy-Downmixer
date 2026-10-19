@@ -568,6 +568,8 @@ TEST(options_file) {
         "mute=TBL, tbr\n"
         "master_db=-3.5   # headroom\n"
         "lfe_lpf=off\n"
+        "common_peq=0\n"
+        "ear_peq=1\n"
         "eq_file=/vendor/etc/galaxy_downmixer/eq.txt\n"
         "log_interval_s=10\n"
         "mute_bad\n"
@@ -579,6 +581,7 @@ TEST(options_file) {
     CHECK(s.muteMask == (kTBL | kTBR));
     CHECK_NEAR(s.masterGainDb, -3.5, 1e-12);
     CHECK(!s.lfeLowPassEnabled);
+    CHECK(!s.commonPeqEnabled && s.earPeqEnabled);
     CHECK(o.eqFile == "/vendor/etc/galaxy_downmixer/eq.txt");
     CHECK(o.logIntervalS == 10);
     CHECK(o.warnings.size() == 3);

@@ -11,6 +11,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <algorithm>
+#include <string>
 #include <vector>
 
 #include "../src/Protocol.h"
@@ -171,6 +173,40 @@ int main(int argc, char** argv) {
     bo.s16 = out16.data();
     EXPECT((*h)->process(h, &bi, &bo) == 0);
     EXPECT(out16[kDelay * kCh] == 16384 + 100);
+
+    // EQ upload in chunks (as the app does), then summary and warnings.
+    {
+        std::string text =
+            "Preamp: -1.5 dB\n"
+            "Filter 1: ON LSC Fc 23 Hz Gain 1.37 dB Q 0.758\n"
+            "Filter 2: ON PK Fc 141 Hz Gain -6.31 dB Q 0.297\n"
+            "Channel: L\nPreamp: -1.7 dB\nFilter 1: ON PK Fc 8978 Hz Gain -1.74 dB Q 3.18\n"
+            "Channel: R\nFilter 1: ON PK Fc 8978 Hz Gain 1.74 dB Q 3.18\n"
+            "GraphicEQ: 20 0\n";
+        while (text.size() < 1500) text += "# padding to force several chunks\n";
+        EXPECT(setParam<uint32_t>(h, gdm::protocol::kParamEqTextBegin, static_cast<uint32_t>(text.size())) == 0);
+        for (size_t pos = 0; pos < text.size(); pos += gdm::protocol::kEqChunkMax) {
+            const size_t len = std::min<size_t>(gdm::protocol::kEqChunkMax, text.size() - pos);
+            std::vector<char> buf(sizeof(effect_param_t) + 4 + len);
+            auto* p = reinterpret_cast<effect_param_t*>(buf.data());
+            p->psize = 4;
+            p->vsize = static_cast<uint32_t>(len);
+            const int32_t key = gdm::protocol::kParamEqTextChunk;
+            memcpy(p->data, &key, 4);
+            memcpy(p->data + 4, text.data() + pos, len);
+            EXPECT(cmdInt(h, EFFECT_CMD_SET_PARAM, static_cast<uint32_t>(buf.size()), buf.data()) == 0);
+        }
+        EXPECT(setParam<int32_t>(h, gdm::protocol::kParamEqTextCommit, 0) == 0);
+        gdm::protocol::EqSummary eq{};
+        EXPECT(getParam(h, gdm::protocol::kParamEqSummary, &eq));
+        EXPECT(eq.commonFilters == 2 && eq.leftFilters == 1 && eq.rightFilters == 1);
+        EXPECT(eq.warningCount == 1 && eq.textBytes == text.size());
+        EXPECT(fabsf(eq.leftPreampDb + 1.7f) < 1e-5f);
+        printf("eq: common %d, L %d, R %d filters, %d warning(s), %u bytes\n", eq.commonFilters,
+               eq.leftFilters, eq.rightFilters, eq.warningCount, eq.textBytes);
+        EXPECT(setParam<int32_t>(h, gdm::protocol::kParamEqClear, 0) == 0);
+        EXPECT(getParam(h, gdm::protocol::kParamEqSummary, &eq) && eq.commonFilters == 0);
+    }
 
     // DUMP writes a line to the given fd (stdout here).
     int fd = 1;

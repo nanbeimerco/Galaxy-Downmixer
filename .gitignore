@@ -9,3 +9,10 @@ build/
 out/
 *.wav
 __pycache__/
+
+# Android app build state
+android/.gradle/
+android/.kotlin/
+android/local.properties
+android/app/build/
+android/build/

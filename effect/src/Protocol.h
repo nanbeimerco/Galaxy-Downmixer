@@ -22,7 +22,34 @@ enum Param : int32_t {
     kParamMuteMask = 11,    // get/set: uint32 channel bits
     kParamSwap = 12,        // get/set: int32 0/1
     kParamMasterGainDb = 13,  // get/set: float
+    kParamLfeLowPass = 14,  // get/set: int32 0/1
+    kParamCommonPeqEnabled = 15,  // get/set: int32 0/1
+    kParamEarPeqEnabled = 16,     // get/set: int32 0/1
+
     kParamReloadFiles = 20, // set: any value; re-reads options.conf and the EQ file
+
+    // Equalizer APO text upload, in chunks so every binder call stays small:
+    // BEGIN (uint32 total bytes), CHUNK (raw bytes, <= kEqChunkMax) ..., COMMIT.
+    kParamEqTextBegin = 21,
+    kParamEqTextChunk = 22,
+    kParamEqTextCommit = 23,  // parses the uploaded text and applies it
+    kParamEqSummary = 24,     // get: EqSummary of the active EQ
+    kParamEqWarnings = 25,    // get: parser warnings, '\n' separated, truncated to the reply size
+    kParamEqClear = 26,       // set: removes every PEQ filter and preamp
+};
+
+constexpr uint32_t kEqChunkMax = 512;
+constexpr uint32_t kEqTextMax = 64 * 1024;
+
+struct EqSummary {
+    int32_t commonFilters;
+    int32_t leftFilters;
+    int32_t rightFilters;
+    int32_t warningCount;
+    float commonPreampDb;
+    float leftPreampDb;
+    float rightPreampDb;
+    uint32_t textBytes;  // size of the text the active EQ came from
 };
 
 struct Status {
@@ -47,5 +74,10 @@ struct Meters {
     uint32_t clippedSamples;
     uint32_t frames;
 };
+
+// The app parses these byte for byte (android/.../effect/Protocol.kt).
+static_assert(sizeof(Status) == 32, "Status layout");
+static_assert(sizeof(Meters) == 428, "Meters layout");
+static_assert(sizeof(EqSummary) == 32, "EqSummary layout");
 
 }  // namespace gdm::protocol

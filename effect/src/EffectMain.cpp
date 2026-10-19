@@ -83,6 +83,12 @@ struct Global {
     gdm::Settings settings;
     bool loaded = false;
 
+    // Equalizer APO text: staging area for uploads and info about the active EQ.
+    std::string eqUpload;
+    uint32_t eqUploadExpected = 0;
+    std::vector<std::string> eqWarnings;
+    uint32_t eqTextBytes = 0;
+
     std::atomic<bool> passthrough{false};
     std::atomic<int> logIntervalS{5};
     std::atomic<int64_t> lastMeterReadNs{0};
@@ -134,10 +140,14 @@ void loadFilesLocked(Global& g) {
 
     const std::string eqPath = opts.eqFile.empty() ? kDefaultEqPath : opts.eqFile;
     std::string eqText;
+    g.eqWarnings.clear();
+    g.eqTextBytes = 0;
     if (readFile(eqPath.c_str(), &eqText)) {
         const gdm::ApoProfile profile = gdm::parseApo(eqText);
         for (const auto& w : profile.warnings) ALOGW("eq %s", w.c_str());
         gdm::applyProfile(profile, s);
+        g.eqWarnings = profile.warnings;
+        g.eqTextBytes = static_cast<uint32_t>(eqText.size());
     } else if (!opts.eqFile.empty()) {
         ALOGW("cannot read eq_file %s", eqPath.c_str());
     }
@@ -368,8 +378,54 @@ int32_t setParam(Instance* e, const effect_param_t* p) {
             g.settings.masterGainDb = v;
             break;
         }
+        case proto::kParamLfeLowPass:
+        case proto::kParamCommonPeqEnabled:
+        case proto::kParamEarPeqEnabled: {
+            int32_t v = 0;
+            if (!readValue(p, &v)) return -EINVAL;
+            bool& target = key == proto::kParamLfeLowPass         ? g.settings.lfeLowPassEnabled
+                           : key == proto::kParamCommonPeqEnabled ? g.settings.commonPeqEnabled
+                                                                  : g.settings.earPeqEnabled;
+            target = v != 0;
+            break;
+        }
         case proto::kParamReloadFiles:
             loadFilesLocked(g);
+            break;
+        case proto::kParamEqTextBegin: {
+            uint32_t total = 0;
+            if (!readValue(p, &total) || total > proto::kEqTextMax) return -EINVAL;
+            g.eqUpload.clear();
+            g.eqUpload.reserve(total);
+            g.eqUploadExpected = total;
+            return 0;
+        }
+        case proto::kParamEqTextChunk: {
+            if (p->vsize > proto::kEqChunkMax ||
+                g.eqUpload.size() + p->vsize > g.eqUploadExpected)
+                return -EINVAL;
+            g.eqUpload.append(p->data + paddedSize(p->psize), p->vsize);
+            return 0;
+        }
+        case proto::kParamEqTextCommit: {
+            if (g.eqUpload.size() != g.eqUploadExpected) return -EINVAL;
+            const gdm::ApoProfile profile = gdm::parseApo(g.eqUpload);
+            gdm::applyProfile(profile, g.settings);
+            g.eqWarnings = profile.warnings;
+            g.eqTextBytes = static_cast<uint32_t>(g.eqUpload.size());
+            g.eqUpload.clear();
+            g.eqUploadExpected = 0;
+            ALOGI("eq uploaded: common %zu, L %zu, R %zu filters, %zu warnings",
+                  g.settings.commonPeq.filters.size(), g.settings.leftPeq.filters.size(),
+                  g.settings.rightPeq.filters.size(), g.eqWarnings.size());
+            break;
+        }
+        case proto::kParamEqClear:
+            g.settings.commonPeq = {};
+            g.settings.leftPeq = {};
+            g.settings.rightPeq = {};
+            g.eqWarnings.clear();
+            g.eqTextBytes = 0;
             break;
         default:
             return -EINVAL;
@@ -444,6 +500,36 @@ int32_t getParam(Instance* e, effect_param_t* reply, uint32_t maxValueSize) {
         case proto::kParamMasterGainDb: {
             const float v = static_cast<float>(g.settings.masterGainDb);
             return put(&v, sizeof(v));
+        }
+        case proto::kParamLfeLowPass:
+        case proto::kParamCommonPeqEnabled:
+        case proto::kParamEarPeqEnabled: {
+            const bool b = key == proto::kParamLfeLowPass         ? g.settings.lfeLowPassEnabled
+                           : key == proto::kParamCommonPeqEnabled ? g.settings.commonPeqEnabled
+                                                                  : g.settings.earPeqEnabled;
+            const int32_t v = b ? 1 : 0;
+            return put(&v, sizeof(v));
+        }
+        case proto::kParamEqSummary: {
+            proto::EqSummary s{};
+            s.commonFilters = static_cast<int32_t>(g.settings.commonPeq.filters.size());
+            s.leftFilters = static_cast<int32_t>(g.settings.leftPeq.filters.size());
+            s.rightFilters = static_cast<int32_t>(g.settings.rightPeq.filters.size());
+            s.warningCount = static_cast<int32_t>(g.eqWarnings.size());
+            s.commonPreampDb = static_cast<float>(g.settings.commonPeq.preampDb);
+            s.leftPreampDb = static_cast<float>(g.settings.leftPeq.preampDb);
+            s.rightPreampDb = static_cast<float>(g.settings.rightPeq.preampDb);
+            s.textBytes = g.eqTextBytes;
+            return put(&s, sizeof(s));
+        }
+        case proto::kParamEqWarnings: {
+            std::string text;
+            for (const auto& w : g.eqWarnings) {
+                if (text.size() + w.size() + 1 > maxValueSize) break;
+                text += w;
+                text += '\n';
+            }
+            return put(text.data(), static_cast<uint32_t>(text.size()));
         }
         default:
             return -EINVAL;

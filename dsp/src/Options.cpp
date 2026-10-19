@@ -69,6 +69,12 @@ Options parseOptions(const std::string& text, Settings& settings) {
         } else if (key == "lfe_lpf") {
             if (parseBool(value, &b)) settings.lfeLowPassEnabled = b;
             else o.warnings.push_back(where + "lfe_lpf must be 0 or 1");
+        } else if (key == "common_peq") {
+            if (parseBool(value, &b)) settings.commonPeqEnabled = b;
+            else o.warnings.push_back(where + "common_peq must be 0 or 1");
+        } else if (key == "ear_peq") {
+            if (parseBool(value, &b)) settings.earPeqEnabled = b;
+            else o.warnings.push_back(where + "ear_peq must be 0 or 1");
         } else if (key == "master_db") {
             if (parseDouble(value, &d) && d <= 24.0 && d >= -60.0) settings.masterGainDb = d;
             else o.warnings.push_back(where + "master_db must be a number in [-60, 24]");

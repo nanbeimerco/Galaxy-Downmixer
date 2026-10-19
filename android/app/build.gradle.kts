@@ -47,5 +47,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.11.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.11.0")
     implementation("androidx.core:core-ktx:1.17.0")
+    // AudioEffect's byte[] getParameter/setParameter are on the blocked hidden-API list.
+    implementation("org.lsposed.hiddenapibypass:hiddenapibypass:6.1")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

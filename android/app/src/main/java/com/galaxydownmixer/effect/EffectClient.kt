@@ -4,6 +4,7 @@ import android.media.audiofx.AudioEffect
 import java.lang.reflect.Constructor
 import java.lang.reflect.Method
 import java.util.UUID
+import org.lsposed.hiddenapibypass.HiddenApiBypass
 
 /**
  * Control handle on the Galaxy Downmixer effect.
@@ -14,7 +15,8 @@ import java.util.UUID
  * reads report that most recently active instance.
  *
  * AudioEffect's UUID constructor and byte[] parameter methods are hidden
- * framework API, reached through reflection.
+ * framework API (partly on the blocked list), reached through reflection
+ * after exempting AudioEffect with HiddenApiBypass.
  */
 class EffectClient private constructor(private val effect: AudioEffect) : AutoCloseable {
 
@@ -61,6 +63,11 @@ class EffectClient private constructor(private val effect: AudioEffect) : AutoCl
         (setParameter.invoke(effect, key(key), value) as Int) == 0
 
     companion object {
+        init {
+            // Lift hidden-API restrictions for AudioEffect only.
+            HiddenApiBypass.addHiddenApiExemptions("Landroid/media/audiofx/AudioEffect;")
+        }
+
         private val constructor: Constructor<AudioEffect> by lazy {
             AudioEffect::class.java.getDeclaredConstructor(
                 UUID::class.java, UUID::class.java, Int::class.javaPrimitiveType, Int::class.javaPrimitiveType,

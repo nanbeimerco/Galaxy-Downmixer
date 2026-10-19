@@ -1,19 +1,22 @@
 package com.galaxydownmixer.data
 
-import java.util.concurrent.TimeUnit
-
 /**
  * Persists settings into the Magisk module, so the effect loads them by
  * itself after a reboot or an audio HAL restart (no app needed then).
  *
- * Files are rewritten in place ("cat >"): Magisk bind-mounts them over
+ * Files are rewritten in place: Magisk bind-mounts them over
  * /vendor/etc/galaxy_downmixer, and an in-place write keeps that mount valid.
+ *
+ * Root is requested once. If it is denied, nothing is retried until
+ * [retryRoot] is called, so the user is not flooded with Magisk prompts/toasts.
  */
 object ConfigStore {
     private const val DIR = "/data/adb/modules/galaxy_downmixer/system/vendor/etc/galaxy_downmixer"
     const val OPTIONS = "$DIR/options.conf"
     const val EQ = "$DIR/eq.txt"
     private const val LABEL = "u:object_r:vendor_configs_file:s0"
+
+    enum class Root { UNKNOWN, GRANTED, DENIED }
 
     data class Options(
         val enabled: Boolean,
@@ -24,6 +27,18 @@ object ConfigStore {
         val commonPeq: Boolean,
         val earPeq: Boolean,
     )
+
+    sealed interface Result {
+        data object Ok : Result
+        data object NoRoot : Result
+        data class Failed(val message: String) : Result
+    }
+
+    @Volatile var root: Root = Root.UNKNOWN
+        private set
+
+    private var shell: RootShell? = null
+    private val lock = Any()
 
     fun optionsText(o: Options): String = buildString {
         appendLine("# Written by the Galaxy Downmixer app.")
@@ -38,32 +53,43 @@ object ConfigStore {
         appendLine("log_interval_s=0")
     }
 
-    /** Returns null on success, or an error message. */
-    fun write(path: String, content: ByteArray): String? {
-        val script = "cat > '$path' && chcon $LABEL '$path' && chmod 0644 '$path'"
-        return runSu(script, content)
+    /** Blocking: may wait for the Magisk prompt the first time. */
+    fun write(path: String, content: ByteArray): Result = synchronized(lock) {
+        val sh = shellLocked() ?: return Result.NoRoot
+        val (status, output) = sh.writeFile(path, content)
+        if (status != 0) {
+            if (!sh.isAlive) dropShellLocked()
+            return Result.Failed(output.ifEmpty { "書き込みに失敗しました ($status)" })
+        }
+        sh.run("chcon $LABEL '$path'; chmod 0644 '$path'")
+        Result.Ok
     }
 
-    fun read(path: String): ByteArray? {
-        val p = runCatching { ProcessBuilder("su", "-c", "cat '$path'").start() }.getOrNull() ?: return null
-        val bytes = p.inputStream.readBytes()
-        return if (p.waitFor(5, TimeUnit.SECONDS) && p.exitValue() == 0) bytes else null
+    /** Asks Magisk once (if not asked yet) and reports the outcome. Blocking. */
+    fun ensureRoot(): Root = synchronized(lock) {
+        shellLocked()
+        root
     }
 
-    fun moduleInstalled(): Boolean = runSu("[ -d '$DIR' ]", ByteArray(0)) == null
+    /** Clears a previous denial and asks Magisk again. Blocking. */
+    fun retryRoot(): Root = synchronized(lock) {
+        dropShellLocked()
+        root = Root.UNKNOWN
+        shellLocked()
+        root
+    }
 
-    private fun runSu(script: String, stdin: ByteArray): String? {
-        val p = try {
-            ProcessBuilder("su", "-c", script).redirectErrorStream(true).start()
-        } catch (e: Exception) {
-            return "root 権限を取得できません (${e.message})"
-        }
-        p.outputStream.use { it.write(stdin) }
-        val output = p.inputStream.bufferedReader().readText().trim()
-        if (!p.waitFor(10, TimeUnit.SECONDS)) {
-            p.destroy()
-            return "root コマンドがタイムアウトしました"
-        }
-        return if (p.exitValue() == 0) null else output.ifEmpty { "root コマンドが失敗しました (${p.exitValue()})" }
+    private fun shellLocked(): RootShell? {
+        shell?.takeIf { it.isAlive }?.let { return it }
+        if (root == Root.DENIED) return null
+        val sh = RootShell.open()
+        shell = sh
+        root = if (sh != null) Root.GRANTED else Root.DENIED
+        return sh
+    }
+
+    private fun dropShellLocked() {
+        shell?.close()
+        shell = null
     }
 }

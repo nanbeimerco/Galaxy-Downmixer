@@ -63,6 +63,8 @@ data class UiState(
     val eq: EqSummary = EqSummary.EMPTY,
     val eqWarnings: List<String> = emptyList(),
     val eqName: String? = null,
+    /** Whether settings can be saved into the module (root via Magisk). */
+    val root: ConfigStore.Root = ConfigStore.Root.UNKNOWN,
     val message: String? = null,
 )
 
@@ -83,6 +85,7 @@ class DownmixViewModel(app: Application) : AndroidViewModel(app) {
     private var persistJob: Job? = null
     private var failures = 0
     private var lastFrames = -1L
+    private var lastSavedOptions: String? = null
 
     // Display ballistics, indexed like the meter frame (inputs), then mix L/R, out L/R.
     private val peak = FloatArray(36) { FLOOR_DB }
@@ -114,6 +117,13 @@ class DownmixViewModel(app: Application) : AndroidViewModel(app) {
                 Connection.Connected
             }.getOrElse { Connection.Failed("エフェクトに接続できません: ${it.cause?.message ?: it.message}") }
             _state.update { it.copy(connection = result) }
+            if (result == Connection.Connected) {
+                // One root request per app start, so a denial shows up as the banner right away.
+                launch(Dispatchers.IO) {
+                    val root = ConfigStore.ensureRoot()
+                    _state.update { it.copy(root = root) }
+                }
+            }
         }
     }
 
@@ -250,8 +260,8 @@ class DownmixViewModel(app: Application) : AndroidViewModel(app) {
             val name = displayName(uri)
             prefs.edit().putString(KEY_EQ_NAME, name).apply()
             _state.update { it.copy(eqName = name) }
-            val err = withContext(Dispatchers.IO) { ConfigStore.write(ConfigStore.EQ, bytes) }
-            toast(err?.let { "EQ を適用しました (保存に失敗: $it)" } ?: "EQ を適用して保存しました")
+            val saved = save(ConfigStore.EQ, bytes)
+            toast(if (saved) "EQ を適用して保存しました" else "EQ を適用しました（保存はされていません）")
         }
     }
 
@@ -262,10 +272,8 @@ class DownmixViewModel(app: Application) : AndroidViewModel(app) {
             refreshEq(c)
             prefs.edit().remove(KEY_EQ_NAME).apply()
             _state.update { it.copy(eqName = null) }
-            val err = withContext(Dispatchers.IO) {
-                ConfigStore.write(ConfigStore.EQ, "# no EQ\n".toByteArray())
-            }
-            toast(err?.let { "EQ を解除しました (保存に失敗: $it)" } ?: "EQ を解除しました")
+            save(ConfigStore.EQ, "# no EQ\n".toByteArray())
+            toast("EQ を解除しました")
         }
     }
 
@@ -294,7 +302,39 @@ class DownmixViewModel(app: Application) : AndroidViewModel(app) {
                     earPeq = s.earPeq,
                 ),
             )
-            ConfigStore.write(ConfigStore.OPTIONS, text.toByteArray())?.let { toast("設定を保存できません: $it") }
+            if (text == lastSavedOptions) return@launch
+            if (save(ConfigStore.OPTIONS, text.toByteArray())) lastSavedOptions = text
+        }
+    }
+
+    /**
+     * Writes a module file. Missing or denied root is shown once as a banner
+     * (state.root), never as a per-change message; other failures are toasted.
+     */
+    private suspend fun save(path: String, content: ByteArray): Boolean {
+        if (ConfigStore.root == ConfigStore.Root.DENIED) return false
+        val result = withContext(Dispatchers.IO) { ConfigStore.write(path, content) }
+        _state.update { it.copy(root = ConfigStore.root) }
+        return when (result) {
+            ConfigStore.Result.Ok -> true
+            ConfigStore.Result.NoRoot -> false
+            is ConfigStore.Result.Failed -> {
+                toast("設定を保存できません: ${result.message}")
+                false
+            }
+        }
+    }
+
+    /** Called from the banner after the user allowed the app in Magisk. */
+    fun retryRoot() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val root = ConfigStore.retryRoot()
+            _state.update { it.copy(root = root) }
+            if (root == ConfigStore.Root.GRANTED) {
+                lastSavedOptions = null
+                schedulePersist()
+                toast("root 権限を取得しました。設定を保存します")
+            }
         }
     }
 

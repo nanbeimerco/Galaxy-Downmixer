@@ -21,6 +21,7 @@ import androidx.compose.material.icons.automirrored.rounded.CallMerge
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.FileOpen
 import androidx.compose.material.icons.rounded.GraphicEq
+import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.SurroundSound
 import androidx.compose.material.icons.automirrored.rounded.VolumeOff
@@ -74,6 +75,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.galaxydownmixer.data.ConfigStore
 import com.galaxydownmixer.effect.Channels
 import com.galaxydownmixer.effect.EqSummary
 import java.util.Locale
@@ -126,6 +128,7 @@ fun MainScreen(vm: DownmixViewModel) {
                 }
                 is Connection.Failed -> item { ProblemCard("接続できません", c.message, vm::connect) }
                 Connection.Connected -> {
+                    if (state.root == ConfigStore.Root.DENIED) item { RootDeniedCard(vm::retryRoot) }
                     item { ModeSelector(state.enabled, vm::setEnabled) }
                     item { InputCard(state, vm::toggleMute) }
                     item { OutputCard(state, vm::resetClipCount) }
@@ -199,6 +202,36 @@ private fun ProblemCard(title: String, body: String, onRetry: () -> Unit) {
             ShapeBadge(Icons.Rounded.ErrorOutline, MaterialTheme.colorScheme.error, MaterialTheme.colorScheme.onError)
             Text(title, style = MaterialTheme.typography.headlineSmall)
             Text(body, style = MaterialTheme.typography.bodyMedium)
+            Button(onClick = onRetry, shapes = ButtonDefaults.shapes()) {
+                Icon(Icons.Rounded.Refresh, contentDescription = null)
+                Spacer(Modifier.width(ButtonDefaults.IconSpacing))
+                Text("再試行")
+            }
+        }
+    }
+}
+
+/** Shown once (instead of a message per change) while Magisk denies root. */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun RootDeniedCard(onRetry: () -> Unit) {
+    Card(
+        shape = MaterialTheme.shapes.extraLarge,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+            contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+        ),
+    ) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                ShapeBadge(Icons.Rounded.Lock, MaterialTheme.colorScheme.tertiary, MaterialTheme.colorScheme.onTertiary)
+                Text("設定が保存されていません", style = MaterialTheme.typography.titleMedium)
+            }
+            Text(
+                "Magisk でこのアプリの root 権限が「拒否」になっています。変更は今は効いていますが、" +
+                    "再起動すると元に戻ります。Magisk の「スーパーユーザー」で Galaxy Downmixer を許可してから再試行してください。",
+                style = MaterialTheme.typography.bodyMedium,
+            )
             Button(onClick = onRetry, shapes = ButtonDefaults.shapes()) {
                 Icon(Icons.Rounded.Refresh, contentDescription = null)
                 Spacer(Modifier.width(ButtonDefaults.IconSpacing))

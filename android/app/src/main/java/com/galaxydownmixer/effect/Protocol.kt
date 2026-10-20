@@ -28,6 +28,8 @@ object Protocol {
     const val PARAM_EQ_SUMMARY = 24
     const val PARAM_EQ_WARNINGS = 25
     const val PARAM_EQ_CLEAR = 26
+    const val PARAM_RECORD_CONTROL = 30
+    const val PARAM_RECORD_STATUS = 31
 
     const val EQ_CHUNK_MAX = 512
     const val EQ_TEXT_MAX = 64 * 1024
@@ -35,6 +37,7 @@ object Protocol {
     const val STATUS_SIZE = 32
     const val METERS_SIZE = 428
     const val EQ_SUMMARY_SIZE = 32
+    const val RECORD_STATUS_SIZE = 24
 
     internal fun le(bytes: ByteArray): ByteBuffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
 }
@@ -132,6 +135,30 @@ data class EqSummary(
                 leftPreampDb = buf.float,
                 rightPreampDb = buf.float,
                 textBytes = buf.int,
+            )
+        }
+    }
+}
+
+data class RecordStatus(
+    val isRecording: Boolean,
+    val sampleRate: Int,
+    val recordedFrames: Long,
+    val droppedFrames: Int,
+) {
+    val durationSeconds: Double
+        get() = if (sampleRate > 0) recordedFrames.toDouble() / sampleRate else 0.0
+
+    companion object {
+        val IDLE = RecordStatus(false, 0, 0L, 0)
+
+        fun parse(b: ByteArray): RecordStatus {
+            val buf = Protocol.le(b)
+            return RecordStatus(
+                isRecording = buf.int != 0,
+                sampleRate = buf.int,
+                recordedFrames = buf.long,
+                droppedFrames = buf.int,
             )
         }
     }

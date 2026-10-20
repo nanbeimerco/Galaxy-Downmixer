@@ -16,3 +16,14 @@ android/.kotlin/
 android/local.properties
 android/app/build/
 android/build/
+
+# Vendor / OEM proprietary binaries
+*.so
+/orig_libs/
+/module/system/lib64/
+/module/system/vendor/lib/
+
+# Temporary / copy files
+* - コピー*
+* - Copy*
+

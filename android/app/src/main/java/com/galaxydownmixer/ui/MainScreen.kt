@@ -133,11 +133,17 @@ fun MainScreen(vm: DownmixViewModel) {
                     item { InputCard(state, vm::toggleMute) }
                     item { OutputCard(state, vm::resetClipCount) }
                     item { ProcessingCard(state, vm) }
+                    item { RecordCard(state, vm::toggleRecording) }
                     item {
-                        EqCard(
+                        EqCardView(
                             state = state,
                             onLoad = { picker.launch(arrayOf("text/plain", "application/octet-stream", "*/*")) },
                             onClear = vm::clearEq,
+                            onSelectPreset = vm::selectPreset,
+                            onDeletePreset = vm::deletePreset,
+                            onRenamePreset = vm::renamePreset,
+                            onAssignDevice = vm::assignCurrentDevice,
+                            onToggleAutoSwitch = vm::setAutoDeviceSwitch,
                         )
                     }
                 }
@@ -163,7 +169,7 @@ private fun subtitle(s: UiState): String {
 // --- building blocks -------------------------------------------------------------
 
 @Composable
-private fun SectionCard(title: String, trailing: (@Composable () -> Unit)? = null, content: @Composable ColumnScope.() -> Unit) {
+fun SectionCard(title: String, trailing: (@Composable () -> Unit)? = null, content: @Composable ColumnScope.() -> Unit) {
     Card(
         shape = MaterialTheme.shapes.extraLarge,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
@@ -243,7 +249,7 @@ private fun RootDeniedCard(onRetry: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun ShapeBadge(icon: androidx.compose.ui.graphics.vector.ImageVector, container: androidx.compose.ui.graphics.Color, content: androidx.compose.ui.graphics.Color) {
+fun ShapeBadge(icon: androidx.compose.ui.graphics.vector.ImageVector, container: androidx.compose.ui.graphics.Color, content: androidx.compose.ui.graphics.Color) {
     Box(
         Modifier.size(48.dp).clip(MaterialShapes.Cookie9Sided.toShape()).background(container),
         contentAlignment = Alignment.Center,
@@ -399,63 +405,77 @@ private fun SwitchRow(title: String, detail: String, checked: Boolean, onChange:
     }
 }
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
-@Composable
-private fun EqCard(state: UiState, onLoad: () -> Unit, onClear: () -> Unit) {
-    var showWarnings by rememberSaveable { mutableStateOf(false) }
-    SectionCard(title = "EQ（Equalizer APO 形式）") {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            ShapeBadge(Icons.Rounded.GraphicEq, MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer)
-            Text(
-                when {
-                    state.eq.isEmpty -> "未設定"
-                    else -> state.eqName ?: "端末の eq.txt"
-                },
-                style = MaterialTheme.typography.titleSmall,
-            )
-        }
-        if (!state.eq.isEmpty) EqSummaryRows(state.eq)
-        if (state.eqWarnings.isNotEmpty()) {
-            TextButton(onClick = { showWarnings = !showWarnings }) {
-                Icon(Icons.Rounded.Warning, contentDescription = null)
-                Spacer(Modifier.width(ButtonDefaults.IconSpacing))
-                Text("読み飛ばした行 ${state.eqWarnings.size} 件")
-            }
-            AnimatedVisibility(showWarnings) {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    state.eqWarnings.forEach {
-                        Text(it, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
-                    }
-                }
-            }
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = onLoad, shapes = ButtonDefaults.shapes()) {
-                Icon(Icons.Rounded.FileOpen, contentDescription = null)
-                Spacer(Modifier.width(ButtonDefaults.IconSpacing))
-                Text("ファイルを読み込む")
-            }
-            OutlinedButton(onClick = onClear, shapes = ButtonDefaults.shapes(), enabled = !state.eq.isEmpty) {
-                Text("解除")
-            }
-        }
-    }
-}
 
 @Composable
-private fun EqSummaryRows(eq: EqSummary) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        listOf(
-            Triple("共通", eq.commonFilters, eq.commonPreampDb),
-            Triple("L", eq.leftFilters, eq.leftPreampDb),
-            Triple("R", eq.rightFilters, eq.rightPreampDb),
-        ).forEach { (name, count, preamp) ->
-            Row {
-                Text(name, style = MaterialTheme.typography.labelLarge, modifier = Modifier.width(48.dp))
-                Text(
-                    String.format(Locale.ROOT, "%d フィルター · プリアンプ %+.1f dB", count, preamp),
-                    style = MaterialTheme.typography.bodyMedium,
+private fun RecordCard(state: UiState, onToggleRecord: () -> Unit) {
+    SectionCard(
+        title = "録音 (Pre-EQ キャプチャ)",
+        trailing = {
+            if (state.isRecording) {
+                AssistChip(
+                    onClick = {},
+                    label = { Text("● REC", color = MaterialTheme.colorScheme.error) },
+                    colors = AssistChipDefaults.assistChipColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer,
+                    ),
                 )
+            }
+        },
+    ) {
+        Text(
+            text = "マスターゲイン適用後・EQ処理前の音声を 32-bit Float WAV として端末に保存します（波形解析・比較用）。",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        if (state.isRecording) {
+            val totalSec = state.recordDurationSeconds.toInt()
+            val min = totalSec / 60
+            val sec = totalSec % 60
+            val timeStr = String.format(Locale.ROOT, "%02d:%02d", min, sec)
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column {
+                    Text(
+                        text = "録音時間: $timeStr",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontFamily = FontFamily.Monospace,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                    Text(
+                        text = "${state.recordedFrames} フレーム (ドロップ: ${state.recordDropped})",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Button(
+                    onClick = onToggleRecord,
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                ) {
+                    Text("■ 停止")
+                }
+            }
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    text = "保存先: /sdcard/Music/GalaxyDownmixer/",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f).padding(end = 8.dp),
+                )
+                Button(
+                    onClick = onToggleRecord,
+                ) {
+                    Text("● 録音開始")
+                }
             }
         }
     }

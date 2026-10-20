@@ -47,6 +47,13 @@ class EffectClient private constructor(private val effect: AudioEffect) : AutoCl
         return setInt(Protocol.PARAM_EQ_TEXT_COMMIT, 0)
     }
 
+    fun startRecording(): Boolean = setInt(Protocol.PARAM_RECORD_CONTROL, 1)
+
+    fun stopRecording(): Boolean = setInt(Protocol.PARAM_RECORD_CONTROL, 0)
+
+    fun getRecordStatus(): RecordStatus? =
+        getBytes(Protocol.PARAM_RECORD_STATUS, Protocol.RECORD_STATUS_SIZE)?.let { RecordStatus.parse(it) }
+
     override fun close() {
         runCatching { effect.release() }
     }

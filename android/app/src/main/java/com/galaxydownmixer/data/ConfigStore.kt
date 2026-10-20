@@ -65,6 +65,12 @@ object ConfigStore {
         Result.Ok
     }
 
+    /** Runs an arbitrary command via the root shell. */
+    fun run(script: String): Pair<Int, String>? = synchronized(lock) {
+        val sh = shellLocked() ?: return null
+        sh.run(script)
+    }
+
     /** Asks Magisk once (if not asked yet) and reports the outcome. Blocking. */
     fun ensureRoot(): Root = synchronized(lock) {
         shellLocked()

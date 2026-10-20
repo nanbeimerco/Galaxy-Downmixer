@@ -8,6 +8,7 @@ option(GDM_BUILD_TESTS "Build the PC unit tests and tools" ON)
 
 add_library(gdm_dsp STATIC
     src/ApoParser.cpp
+    src/AudioWriter.cpp
     src/Biquad.cpp
     src/ChannelMap.cpp
     src/Engine.cpp

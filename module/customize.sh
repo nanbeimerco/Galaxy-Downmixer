@@ -27,11 +27,13 @@ if [ "$ARCH" != "arm64" ]; then
 fi
 
 set_perm_recursive "$MODPATH" 0 0 0755 0644
+[ -d "$MODPATH/system/lib64" ] && set_perm_recursive "$MODPATH/system/lib64" 0 0 0755 0644 u:object_r:system_file:s0
 for d in lib lib64; do
     [ -d "$MODPATH/system/vendor/$d/soundfx" ] &&
         set_perm_recursive "$MODPATH/system/vendor/$d/soundfx" 0 0 0755 0644 u:object_r:vendor_file:s0
 done
 set_perm_recursive "$MODPATH/system/vendor/etc" 0 0 0755 0644 u:object_r:vendor_configs_file:s0
+[ -f "$MODPATH/service.sh" ] && set_perm "$MODPATH/service.sh" 0 0 0755
 
 ui_print "- Options: /data/adb/modules/galaxy_downmixer/system/vendor/etc/galaxy_downmixer/options.conf"
 ui_print "- Reboot to activate"

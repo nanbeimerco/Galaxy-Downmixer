@@ -36,10 +36,21 @@ enum Param : int32_t {
     kParamEqSummary = 24,     // get: EqSummary of the active EQ
     kParamEqWarnings = 25,    // get: parser warnings, '\n' separated, truncated to the reply size
     kParamEqClear = 26,       // set: removes every PEQ filter and preamp
+
+    kParamRecordControl = 30, // set: int32 (1 = start, 0 = stop)
+    kParamRecordStatus = 31,  // get: RecordStatus
 };
 
 constexpr uint32_t kEqChunkMax = 512;
 constexpr uint32_t kEqTextMax = 64 * 1024;
+
+struct RecordStatus {
+    int32_t isRecording;       // 1 if recording, 0 otherwise
+    uint32_t sampleRate;      // sampling rate in Hz
+    uint64_t recordedFrames;  // number of stereo frames written
+    uint32_t droppedFrames;   // frames dropped due to buffer overflow
+    uint32_t reserved;        // explicit padding to 24 bytes
+};
 
 struct EqSummary {
     int32_t commonFilters;
@@ -79,5 +90,6 @@ struct Meters {
 static_assert(sizeof(Status) == 32, "Status layout");
 static_assert(sizeof(Meters) == 428, "Meters layout");
 static_assert(sizeof(EqSummary) == 32, "EqSummary layout");
+static_assert(sizeof(RecordStatus) == 24, "RecordStatus layout");
 
 }  // namespace gdm::protocol

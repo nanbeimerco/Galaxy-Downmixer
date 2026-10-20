@@ -58,6 +58,10 @@ public:
     // Dry delay in samples that the current settings resolve to.
     int dryDelaySamples() const;
 
+    // Optional tap for recording downmixed audio before EQ.
+    void setPreEqWriter(class AudioWriter* writer);
+    class AudioWriter* preEqWriter() const;
+
 private:
     struct Prepared;
 
@@ -99,6 +103,9 @@ private:
     AtomicMeter outMeter_[2];
     std::atomic<uint32_t> clipped_{0};
     std::atomic<uint32_t> meterFrames_{0};
+
+    // Pre-EQ recording tap.
+    std::atomic<class AudioWriter*> preEqWriter_{nullptr};
 };
 
 }  // namespace gdm

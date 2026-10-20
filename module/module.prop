@@ -1,6 +1,6 @@
 id=galaxy_downmixer
 name=Galaxy Downmixer
-version=v0.2.1
-versionCode=3
+version=v0.3.0
+versionCode=4
 author=masak
-description=Custom 7.1.4 to stereo downmix effect for Apple Music Dolby Atmos (Galaxy S21). Controlled by the Galaxy Downmixer app.
+description=Custom 7.1.4 to stereo downmix effect for Apple Music Dolby Atmos (Galaxy S21) with Spatializer HRTF bypass.

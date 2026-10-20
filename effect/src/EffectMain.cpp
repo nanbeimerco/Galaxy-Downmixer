@@ -10,6 +10,7 @@
 #include <sched.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <time.h>
 
 #include <algorithm>
@@ -24,6 +25,7 @@
 #include "Protocol.h"
 #include "aosp_effect.h"
 #include "gdm/ApoParser.h"
+#include "gdm/AudioWriter.h"
 #include "gdm/Engine.h"
 #include "gdm/Options.h"
 
@@ -96,6 +98,8 @@ struct Global {
     std::atomic<bool> passthrough{false};
     std::atomic<int> logIntervalS{5};
     std::atomic<int64_t> lastMeterReadNs{0};
+
+    gdm::AudioWriter audioWriter;
 };
 
 Global& global() {
@@ -431,6 +435,54 @@ int32_t setParam(Instance* e, const effect_param_t* p) {
             g.eqWarnings.clear();
             g.eqTextBytes = 0;
             break;
+        case proto::kParamRecordControl: {
+            int32_t v = 0;
+            if (!readValue(p, &v)) return -EINVAL;
+            if (v != 0) {
+                if (!g.audioWriter.isRecording()) {
+                    Instance* target = mostRecentLocked(g, e);
+                    uint32_t sr = (target && target->config.inputCfg.samplingRate > 0)
+                                      ? target->config.inputCfg.samplingRate
+                                      : 48000;
+                    time_t now = time(nullptr);
+                    tm t{};
+                    localtime_r(&now, &t);
+                    char path[256];
+                    mkdir("/sdcard/Music", 0777);
+                    mkdir("/sdcard/Music/GalaxyDownmixer", 0777);
+                    snprintf(path, sizeof(path),
+                             "/sdcard/Music/GalaxyDownmixer/pre_eq_%04d%02d%02d_%02d%02d%02d.wav",
+                             t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour, t.tm_min,
+                             t.tm_sec);
+                    bool ok = g.audioWriter.start(path, sr);
+                    if (!ok) {
+                        mkdir("/data/snd", 0777);
+                        mkdir("/data/snd/GalaxyDownmixer", 0777);
+                        snprintf(path, sizeof(path),
+                                 "/data/snd/GalaxyDownmixer/pre_eq_%04d%02d%02d_%02d%02d%02d.wav",
+                                 t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour, t.tm_min,
+                                 t.tm_sec);
+                        ok = g.audioWriter.start(path, sr);
+                    }
+                    if (ok) {
+                        for (Instance* inst : g.instances) inst->engine.setPreEqWriter(&g.audioWriter);
+                        ALOGI("Recording started: %s (sr=%u)", path, sr);
+                    } else {
+                        ALOGW("Failed to start recording: %s", path);
+                        return -EIO;
+                    }
+                }
+            } else {
+                if (g.audioWriter.isRecording()) {
+                    for (Instance* inst : g.instances) inst->engine.setPreEqWriter(nullptr);
+                    const std::string path = g.audioWriter.currentFilePath();
+                    g.audioWriter.stop();
+                    ALOGI("Recording stopped: %s (frames=%llu)", path.c_str(),
+                          static_cast<unsigned long long>(g.audioWriter.recordedFrames()));
+                }
+            }
+            return 0;
+        }
         default:
             return -EINVAL;
     }
@@ -534,6 +586,14 @@ int32_t getParam(Instance* e, effect_param_t* reply, uint32_t maxValueSize) {
                 text += '\n';
             }
             return put(text.data(), static_cast<uint32_t>(text.size()));
+        }
+        case proto::kParamRecordStatus: {
+            proto::RecordStatus s{};
+            s.isRecording = g.audioWriter.isRecording() ? 1 : 0;
+            s.sampleRate = g.audioWriter.sampleRate();
+            s.recordedFrames = g.audioWriter.recordedFrames();
+            s.droppedFrames = g.audioWriter.droppedFrames();
+            return put(&s, sizeof(s));
         }
         default:
             return -EINVAL;
@@ -662,6 +722,9 @@ int32_t CreateEffect(const effect_uuid_t* uuid, int32_t session, int32_t io, eff
         std::lock_guard<std::mutex> lock(g.mutex);
         if (!g.loaded) loadFilesLocked(g);
         e->engine.setSettings(g.settings);
+        if (g.audioWriter.isRecording()) {
+            e->engine.setPreEqWriter(&g.audioWriter);
+        }
         g.instances.push_back(e);
         count = g.instances.size();
     }
@@ -673,6 +736,7 @@ int32_t CreateEffect(const effect_uuid_t* uuid, int32_t session, int32_t io, eff
 int32_t ReleaseEffect(effect_handle_t handle) {
     auto* e = reinterpret_cast<Instance*>(handle);
     if (e == nullptr) return -EINVAL;
+    e->engine.setPreEqWriter(nullptr);
     Global& g = global();
     size_t count = 0;
     {

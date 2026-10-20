@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cmath>
 
+#include "gdm/AudioWriter.h"
+
 namespace gdm {
 
 struct Engine::Prepared {
@@ -120,6 +122,14 @@ int Engine::dryDelaySamples() const {
     return resolveDelaySamples(settings_.dryDelayMs, sampleRate_);
 }
 
+void Engine::setPreEqWriter(AudioWriter* writer) {
+    preEqWriter_.store(writer, std::memory_order_release);
+}
+
+AudioWriter* Engine::preEqWriter() const {
+    return preEqWriter_.load(std::memory_order_acquire);
+}
+
 Engine::Prepared* Engine::build(const Settings& s) const {
     auto* p = new Prepared();
     const bool mono = numChannels_ == 1 && channelBits_[0] == kFL;
@@ -195,6 +205,7 @@ void Engine::process(const float* in, float* out, size_t frames) {
     const int n = numChannels_;
     const size_t delaySize = delayL_.size();
     const size_t delay = static_cast<size_t>(p.delaySamples);
+    AudioWriter* preEqWriter = preEqWriter_.load(std::memory_order_relaxed);
 
     float inPeak[kMaxChannelBits] = {};
     float inSum[kMaxChannelBits] = {};
@@ -246,6 +257,10 @@ void Engine::process(const float* in, float* out, size_t frames) {
 
         L *= p.masterGain;
         R *= p.masterGain;
+
+        if (preEqWriter != nullptr) {
+            preEqWriter->push(static_cast<float>(L), static_cast<float>(R));
+        }
 
         L *= p.commonGain;
         R *= p.commonGain;

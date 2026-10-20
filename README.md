@@ -61,7 +61,7 @@ Galaxy Downmixer では以下の処理を行います：
 ## 動作環境 (Requirements)
 
 - **実機確認済み環境**: Samsung Galaxy S21 5G (One UI 7 / Android 15)
-- **Root 環境**: Magisk
+- **Root 環境**: Magisk / KernelSU / APatch
 - **音楽アプリ**: Apple Music（「ドルビーアトモス」を有効に設定）
 
 ※ Galaxy S21 以外の Samsung 端末でも動作する可能性がありますが、`audio_effects` の仕様や Spatializer ライブラリのバージョンが異なる場合があります。
